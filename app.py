@@ -9,7 +9,17 @@ st.caption("輸入實付總額與各餐點原價，自動按比例精確分攤�
 
 st.divider()
 
-# 1. 輸入實付總額
+# 1. 確保 session_state.items 存在且永遠是 list 型態
+if "items" not in st.session_state or not isinstance(
+    st.session_state.items, list
+):
+    st.session_state.items = [
+        {"name": "鐵板雞扒套餐", "price": 94.0},
+        {"name": "脆皮燒雞 (半隻)", "price": 130.0},
+        {"name": "套餐 B (燒雞+牛腩)", "price": 131.0},
+    ]
+
+# 2. 輸入實付總額
 total_paid = st.number_input(
     "請輸入最終實際支付總額 ($)",
     min_value=0.0,
@@ -20,15 +30,7 @@ total_paid = st.number_input(
 
 st.subheader("餐點 / 項目與原價")
 
-# 初始化 session state 來記錄動態新增的項目
-if "items" not in st.session_state:
-    st.session_state.items = [
-        {"name": "鐵板雞扒套餐", "price": 94.0},
-        {"name": "脆皮燒雞 (半隻)", "price": 130.0},
-        {"name": "套餐 B (燒雞+牛腩)", "price": 131.0},
-    ]
-
-# 動態新增項目按鈕
+# 按鈕功能定義
 col_add, col_clear = st.columns([1, 1])
 with col_add:
     if st.button("➕ 新增餐點"):
@@ -42,14 +44,17 @@ with col_clear:
         st.session_state.items = [{"name": "餐點 1", "price": 0.0}]
         st.rerun()
 
-# 顯示輸入框
+# 顯示與收集輸入
 items_data = []
+items_to_remove = []
+
 for i, item in enumerate(st.session_state.items):
     c1, c2, c3 = st.columns([3, 2, 1])
     with c1:
         name = st.text_input(
-            f"餐點 {i+1} 名稱", value=item["name"], key=f"name_{i}"
+            f"餐點 {i+1} 名稱", value=item["name"], key=f"name_input_{i}"
         )
+        st.session_state.items[i]["name"] = name
     with c2:
         price = st.number_input(
             f"原價 (${i+1})",
@@ -57,21 +62,27 @@ for i, item in enumerate(st.session_state.items):
             value=float(item["price"]),
             step=1.0,
             format="%.2f",
-            key=f"price_{i}",
+            key=f"price_input_{i}",
         )
+        st.session_state.items[i]["price"] = price
     with c3:
         st.write("")
         st.write("")
-        if st.button("❌", key=f"del_{i}"):
-            if len(st.session_state.items) > 1:
-                st.session_state.items.pop(i)
-                st.rerun()
+        if st.button("❌", key=f"del_btn_{i}"):
+            items_to_remove.append(i)
 
     items_data.append({"name": name, "price": price})
 
+# 處理刪除項目
+if items_to_remove:
+    for index in sorted(items_to_remove, reverse=True):
+        if len(st.session_state.items) > 1:
+            st.session_state.items.pop(index)
+    st.rerun()
+
 st.divider()
 
-# 計算按鈕
+# 3. 計算分攤金額
 if st.button("🧮 計算分攤金額", type="primary", use_container_width=True):
     total_original = sum(x["price"] for x in items_data)
 
@@ -98,12 +109,11 @@ if st.button("🧮 計算分攤金額", type="primary", use_container_width=True
 
         # 修正 $0.01 尾數誤差
         diff = round(total_paid - current_sum, 2)
-        if diff != 0:
+        if diff != 0 and len(results) > 0:
             max_item = max(results, key=lambda x: x["price"])
             max_item["share"] = round(max_item["share"] + diff, 2)
 
-        # 顯示統計數據
-        discount_rate = (total_paid / total_original) * 100
+        # 顯示統計結果
         discount_fold = (total_paid / total_original) * 10
 
         st.success("計算成功！")
@@ -118,4 +128,3 @@ if st.button("🧮 計算分攤金額", type="primary", use_container_width=True
             st.write(
                 f"• **{res['name']}** (原價 ${res['price']:.2f}) $\\rightarrow$ 實付 **${res['share']:.2f}**"
             )
-          
